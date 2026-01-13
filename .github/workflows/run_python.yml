@@ -1,6 +1,6 @@
 name: Run Python Script
 
-on: [push]  # コードがPushされたら実行
+on: [push]
 
 jobs:
   run-code:
@@ -14,12 +14,8 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Run main.py
-        run: python main.py
-
-      - name: Install dependencies
+      - name: Install pytz
         run: pip install pytz
 
       - name: Run main.py
         run: python main.py
-    
