@@ -1,0 +1,1743 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>日報タスク分析（テーマ別）</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --border: #2d3a4f;
+      --text: #e7ecf3;
+      --muted: #8b9cb3;
+      --accent: #4f8cff;
+      --accent2: #3dd68c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Hiragino Sans", "Yu Gothic UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
+    h1 { font-size: 1.5rem; margin: 0 0 0.25rem; }
+    .meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.5rem; }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem;
+    }
+    .card .label { color: var(--muted); font-size: 0.8rem; }
+    .card .value { font-size: 1.75rem; font-weight: 700; color: var(--accent2); }
+    .card .sub { font-size: 0.85rem; color: var(--muted); }
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+    .panel h2 { font-size: 1rem; margin: 0 0 1rem; }
+    .charts {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    @media (max-width: 800px) {
+      .charts { grid-template-columns: 1fr; }
+    }
+    .chart-box { position: relative; height: 280px; }
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+    .filters label { color: var(--muted); font-size: 0.9rem; }
+    select, input[type="search"] {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.4rem 0.6rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    th, td {
+      border-bottom: 1px solid var(--border);
+      padding: 0.5rem 0.6rem;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { color: var(--muted); font-weight: 600; }
+    .tag {
+      display: inline-block;
+      background: #243044;
+      color: var(--accent);
+      border-radius: 4px;
+      padding: 0.1rem 0.4rem;
+      margin: 0.1rem 0.15rem 0.1rem 0;
+      font-size: 0.75rem;
+    }
+    .numeric-table { font-size: 0.85rem; }
+    .numeric-table td:last-child { text-align: right; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>日報タスク分析（テーマ別集計）</h1>
+    <p class="meta" id="headerMeta"></p>
+
+    <div class="cards" id="summaryCards"></div>
+
+    <div class="charts">
+      <div class="panel">
+        <h2>テーマ別言及数（期間合計）</h2>
+        <div class="chart-box"><canvas id="barChart"></canvas></div>
+      </div>
+      <div class="panel">
+        <h2>日別 × テーマ（積み上げ）</h2>
+        <div class="chart-box"><canvas id="stackedChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>テーマ別数値一覧</h2>
+      <table class="numeric-table" id="numericTable">
+        <thead><tr><th>テーマ</th><th>言及数</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h2>詳細（出典付き）</h2>
+      <div class="filters">
+        <label for="themeFilter">テーマ</label>
+        <select id="themeFilter"><option value="">すべて</option></select>
+        <label for="sectionFilter">セクション</label>
+        <select id="sectionFilter"><option value="">すべて</option></select>
+        <label for="searchBox">検索</label>
+        <input type="search" id="searchBox" placeholder="キーワード…" />
+      </div>
+      <table id="detailTable">
+        <thead>
+          <tr>
+            <th>日付</th>
+            <th>セクション</th>
+            <th>テーマ</th>
+            <th>内容</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script id="analysisData" type="application/json">
+{
+  "meta": {
+    "from": "2026-05-27",
+    "to": "2026-06-02",
+    "reportCount": 7,
+    "itemCount": 92,
+    "generatedAt": "2026-06-03T23:22:25+09:00"
+  },
+  "themeMeta": {
+    "bizmane": "ビジマネ検定",
+    "ai_learning": "AI学習",
+    "finance_drill": "財務・計算演習",
+    "review_plan": "復習・計画",
+    "other": "その他"
+  },
+  "themeTotals": [
+    {
+      "id": "bizmane",
+      "label": "ビジマネ検定",
+      "count": 68
+    },
+    {
+      "id": "ai_learning",
+      "label": "AI学習",
+      "count": 54
+    },
+    {
+      "id": "finance_drill",
+      "label": "財務・計算演習",
+      "count": 29
+    },
+    {
+      "id": "review_plan",
+      "label": "復習・計画",
+      "count": 13
+    }
+  ],
+  "byDate": [
+    {
+      "date": "2026-05-27",
+      "themes": {
+        "ai_learning": 10,
+        "bizmane": 9,
+        "finance_drill": 1,
+        "review_plan": 3
+      }
+    },
+    {
+      "date": "2026-05-28",
+      "themes": {
+        "bizmane": 13,
+        "ai_learning": 9,
+        "review_plan": 1,
+        "finance_drill": 5
+      }
+    },
+    {
+      "date": "2026-05-29",
+      "themes": {
+        "bizmane": 11,
+        "ai_learning": 11,
+        "finance_drill": 6,
+        "review_plan": 1
+      }
+    },
+    {
+      "date": "2026-05-30",
+      "themes": {
+        "ai_learning": 8,
+        "finance_drill": 6,
+        "bizmane": 8,
+        "review_plan": 1
+      }
+    },
+    {
+      "date": "2026-05-31",
+      "themes": {
+        "bizmane": 7,
+        "finance_drill": 5,
+        "ai_learning": 9,
+        "review_plan": 1
+      }
+    },
+    {
+      "date": "2026-06-01",
+      "themes": {
+        "ai_learning": 3,
+        "review_plan": 4,
+        "bizmane": 10,
+        "finance_drill": 6
+      }
+    },
+    {
+      "date": "2026-06-02",
+      "themes": {
+        "ai_learning": 4,
+        "review_plan": 2,
+        "bizmane": 10
+      }
+    }
+  ],
+  "items": [
+    {
+      "date": "2026-05-27",
+      "section": "明日の予定",
+      "text": "[中] NotebookLMの導入・暗記科目の整理テスト — 1章分の暗記ノートを作成",
+      "status": "中",
+      "source_file": "20260527_日報.md",
+      "themes": [
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-27",
+      "section": "明日の予定",
+      "text": "[低] 第1章の確認問題（10問） — 正答率70%以上",
+      "status": "低",
+      "source_file": "20260527_日報.md",
+      "themes": [
+        "bizmane",
+        "finance_drill"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "財務・計算演習"
+      ]
+    },
+    {
+      "date": "2026-05-27",
+      "section": "明日の予定",
+      "text": "[高] 第2章（マーケティング）のAI読み込み・音声化 — 第2章のインプット完了",
+      "status": "高",
+      "source_file": "20260527_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-27",
+      "section": "本日の成果・実績",
+      "text": "AIテキスト読み込み→音声化→通勤中聴取の学習フローを初めて実践した",
+      "status": null,
+      "source_file": "20260527_日報.md",
+      "themes": [
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-27",
+      "section": "本日の成果・実績",
+      "text": "残り1週間の学習計画を策定し、模擬試験（6/2）までの道筋を明確化した",
+      "status": null,
+      "source_file": "20260527_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning",
+        "review_plan"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習",
+        "復習・計画"
+      ]
+    },
+    {
+      "date": "2026-05-27",
+      "section": "本日の成果・実績",
+      "text": "第1章（経営戦略）のインプットを完了した",
+      "status": null,
+      "source_file": "20260527_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-27",
+      "section": "本日の目標",
+      "text": "AIによるテキスト読み込みフローを試し、第1章（経営戦略）のインプットを開始する",
+      "status": "done",
+      "source_file": "20260527_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-27",
+      "section": "本日の目標",
+      "text": "ビジマネ検定の出題範囲を確認し、残り1週間の学習計画を立てる",
+      "status": "done",
+      "source_file": "20260527_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning",
+        "review_plan"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習",
+        "復習・計画"
+      ]
+    },
+    {
+      "date": "2026-05-27",
+      "section": "本日の目標",
+      "text": "全章の学習サイクル設計（継続）",
+      "status": "open",
+      "source_file": "20260527_日報.md",
+      "themes": [
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-27",
+      "section": "業務内容",
+      "text": "帰路〜 / 抽出した要点を音声化し、通勤中に聴取 / 第1章の概要把握まで完了",
+      "status": null,
+      "source_file": "20260527_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-27",
+      "section": "業務内容",
+      "text": "日中〜 / テキスト第1章（経営戦略）をAIで読み込み、要点を抽出 / 約30ページ分を処理。SWOT・5 Forces など主要フレームを整理",
+      "status": null,
+      "source_file": "20260527_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-27",
+      "section": "業務内容",
+      "text": "朝〜 / ビジマネ検定の出題範囲・試験日程の再確認 / 本番まで約10日、模擬試験は6/2予定と整理",
+      "status": null,
+      "source_file": "20260527_日報.md",
+      "themes": [
+        "bizmane",
+        "review_plan"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "復習・計画"
+      ]
+    },
+    {
+      "date": "2026-05-28",
+      "section": "明日の予定",
+      "text": "[中] 第4章（経営法務）のNotebookLM整理 — 暗記ノート完成",
+      "status": "中",
+      "source_file": "20260528_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-28",
+      "section": "明日の予定",
+      "text": "[低] SWOT応用問題の追加復習 — ミスした2問の再テストで正解",
+      "status": "低",
+      "source_file": "20260528_日報.md",
+      "themes": [
+        "bizmane",
+        "review_plan"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "復習・計画"
+      ]
+    },
+    {
+      "date": "2026-05-28",
+      "section": "明日の予定",
+      "text": "[高] 第3章（財務・会計）の完了＋計算問題演習 — 主要計算式の暗記と演習5問",
+      "status": "高",
+      "source_file": "20260528_日報.md",
+      "themes": [
+        "bizmane",
+        "finance_drill"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "財務・計算演習"
+      ]
+    },
+    {
+      "date": "2026-05-28",
+      "section": "本日の成果・実績",
+      "text": "NotebookLMで暗記科目（経営法務）の整理フローを確立した",
+      "status": null,
+      "source_file": "20260528_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-28",
+      "section": "本日の成果・実績",
+      "text": "第1章確認問題で正答率80%を達成した",
+      "status": null,
+      "source_file": "20260528_日報.md",
+      "themes": [
+        "bizmane",
+        "finance_drill"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "財務・計算演習"
+      ]
+    },
+    {
+      "date": "2026-05-28",
+      "section": "本日の成果・実績",
+      "text": "第2章（マーケティング）のインプットを完了した",
+      "status": null,
+      "source_file": "20260528_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-28",
+      "section": "本日の目標",
+      "text": "NotebookLMで暗記科目（経営法務）の整理方法を試す",
+      "status": "done",
+      "source_file": "20260528_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-28",
+      "section": "本日の目標",
+      "text": "第1章の確認問題10問に取り組む",
+      "status": "done",
+      "source_file": "20260528_日報.md",
+      "themes": [
+        "bizmane",
+        "finance_drill"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "財務・計算演習"
+      ]
+    },
+    {
+      "date": "2026-05-28",
+      "section": "本日の目標",
+      "text": "第2章（マーケティング）のAI読み込み・音声化を完了する",
+      "status": "done",
+      "source_file": "20260528_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-28",
+      "section": "業務内容",
+      "text": "夜〜 / 第3章（財務・会計）のAI読み込みを開始 / 約半分まで処理",
+      "status": null,
+      "source_file": "20260528_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning",
+        "finance_drill"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習",
+        "財務・計算演習"
+      ]
+    },
+    {
+      "date": "2026-05-28",
+      "section": "業務内容",
+      "text": "帰路〜 / 第2章の音声を通勤中に聴取／第1章確認問題10問を実施 / 第1章正答率 80%（8/10）",
+      "status": null,
+      "source_file": "20260528_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning",
+        "finance_drill"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習",
+        "財務・計算演習"
+      ]
+    },
+    {
+      "date": "2026-05-28",
+      "section": "業務内容",
+      "text": "日中〜 / NotebookLMに経営法務テキストを投入し、暗記用ノートを生成 / 会社法・契約法の重要条文を一覧化",
+      "status": null,
+      "source_file": "20260528_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-28",
+      "section": "業務内容",
+      "text": "朝〜 / 第2章（マーケティング）をAIで読み込み、要点抽出 / 4P・STP・ブランド戦略など主要概念を整理",
+      "status": null,
+      "source_file": "20260528_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-29",
+      "section": "明日の予定",
+      "text": "[中] 第6章（経営管理）のAI読み込み — 半分以上を処理",
+      "status": "中",
+      "source_file": "20260529_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-29",
+      "section": "明日の予定",
+      "text": "[高] 比率分析・損益分岐点の追加演習（各5問） — 正答率80%以上",
+      "status": "高",
+      "source_file": "20260529_日報.md",
+      "themes": [
+        "finance_drill"
+      ],
+      "theme_labels": [
+        "財務・計算演習"
+      ]
+    },
+    {
+      "date": "2026-05-29",
+      "section": "明日の予定",
+      "text": "[高] 第5章（情報システム）の完了＋第6章着手 — 第5章インプット完了",
+      "status": "高",
+      "source_file": "20260529_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-29",
+      "section": "本日の成果・実績",
+      "text": "NotebookLMによる経営法務の暗記ノートを完成させた",
+      "status": null,
+      "source_file": "20260529_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-29",
+      "section": "本日の成果・実績",
+      "text": "第3章（財務・会計）と第4章（経営法務）のインプットを完了した",
+      "status": null,
+      "source_file": "20260529_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning",
+        "finance_drill"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習",
+        "財務・計算演習"
+      ]
+    },
+    {
+      "date": "2026-05-29",
+      "section": "本日の成果・実績",
+      "text": "計算問題演習で弱点（比率分析・損益分岐点）を特定した",
+      "status": null,
+      "source_file": "20260529_日報.md",
+      "themes": [
+        "finance_drill"
+      ],
+      "theme_labels": [
+        "財務・計算演習"
+      ]
+    },
+    {
+      "date": "2026-05-29",
+      "section": "本日の目標",
+      "text": "第3章（財務・会計）のAI読み込み完了と計算問題演習",
+      "status": "done",
+      "source_file": "20260529_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning",
+        "finance_drill"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習",
+        "財務・計算演習"
+      ]
+    },
+    {
+      "date": "2026-05-29",
+      "section": "本日の目標",
+      "text": "第4章（経営法務）のNotebookLM整理",
+      "status": "done",
+      "source_file": "20260529_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-29",
+      "section": "本日の目標",
+      "text": "第5章（情報システム）のインプット（半分まで）",
+      "status": "open",
+      "source_file": "20260529_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-29",
+      "section": "業務内容",
+      "text": "夜〜 / 第5章（情報システム）のAI読み込み開始 / 約半分まで処理",
+      "status": null,
+      "source_file": "20260529_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-29",
+      "section": "業務内容",
+      "text": "帰路〜 / 第3章・第4章の音声を通勤中に聴取 / 復習として2章分を聴き直し",
+      "status": null,
+      "source_file": "20260529_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning",
+        "review_plan"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習",
+        "復習・計画"
+      ]
+    },
+    {
+      "date": "2026-05-29",
+      "section": "業務内容",
+      "text": "日中〜 / 第4章（経営法務）をNotebookLMで整理 / 会社設立・株主総会・取締役の条文一覧を完成",
+      "status": null,
+      "source_file": "20260529_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-29",
+      "section": "業務内容",
+      "text": "日中〜 / 計算問題5問を演習（自己採点） / 正答 3/5（60%）。比率分析・損益分岐点でミス",
+      "status": null,
+      "source_file": "20260529_日報.md",
+      "themes": [
+        "finance_drill"
+      ],
+      "theme_labels": [
+        "財務・計算演習"
+      ]
+    },
+    {
+      "date": "2026-05-29",
+      "section": "業務内容",
+      "text": "朝〜 / 第3章（財務・会計）のAI読み込み完了、原文照合 / B/S・P/L・キャッシュフロー計算書の構造を整理",
+      "status": null,
+      "source_file": "20260529_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning",
+        "finance_drill"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習",
+        "財務・計算演習"
+      ]
+    },
+    {
+      "date": "2026-05-30",
+      "section": "明日の予定",
+      "text": "[中] 総資産回転率の再演習＋NotebookLM最終チェック — 計算ミス解消、暗記ノート確定",
+      "status": "中",
+      "source_file": "20260530_日報.md",
+      "themes": [
+        "ai_learning",
+        "finance_drill"
+      ],
+      "theme_labels": [
+        "AI学習",
+        "財務・計算演習"
+      ]
+    },
+    {
+      "date": "2026-05-30",
+      "section": "明日の予定",
+      "text": "[低] 第1〜3章の確認問題（各5問） — 総合正答率75%以上",
+      "status": "低",
+      "source_file": "20260530_日報.md",
+      "themes": [
+        "finance_drill"
+      ],
+      "theme_labels": [
+        "財務・計算演習"
+      ]
+    },
+    {
+      "date": "2026-05-30",
+      "section": "明日の予定",
+      "text": "[高] 第6章（経営管理）完了＋第7章（経営環境）インプット — 全7章のインプット完了",
+      "status": "高",
+      "source_file": "20260530_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-30",
+      "section": "本日の成果・実績",
+      "text": "弱点だった比率分析・損益分岐点の演習で正答率を大幅に改善した",
+      "status": null,
+      "source_file": "20260530_日報.md",
+      "themes": [
+        "finance_drill"
+      ],
+      "theme_labels": [
+        "財務・計算演習"
+      ]
+    },
+    {
+      "date": "2026-05-30",
+      "section": "本日の成果・実績",
+      "text": "第5章（情報システム）のインプットを完了した",
+      "status": null,
+      "source_file": "20260530_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-30",
+      "section": "本日の成果・実績",
+      "text": "第6章（経営管理）を7割まで進めた",
+      "status": null,
+      "source_file": "20260530_日報.md",
+      "themes": [
+        "bizmane"
+      ],
+      "theme_labels": [
+        "ビジマネ検定"
+      ]
+    },
+    {
+      "date": "2026-05-30",
+      "section": "本日の目標",
+      "text": "比率分析・損益分岐点の追加演習（各5問）",
+      "status": "done",
+      "source_file": "20260530_日報.md",
+      "themes": [
+        "finance_drill"
+      ],
+      "theme_labels": [
+        "財務・計算演習"
+      ]
+    },
+    {
+      "date": "2026-05-30",
+      "section": "本日の目標",
+      "text": "第5章（情報システム）のインプット完了",
+      "status": "done",
+      "source_file": "20260530_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-30",
+      "section": "本日の目標",
+      "text": "第6章（経営管理）のAI読み込み開始",
+      "status": "done",
+      "source_file": "20260530_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-30",
+      "section": "業務内容",
+      "text": "午前〜 / 比率分析・損益分岐点の追加演習（各5問） / 比率分析 4/5、損益分岐点 5/5。前日比で大幅改善",
+      "status": null,
+      "source_file": "20260530_日報.md",
+      "themes": [
+        "finance_drill"
+      ],
+      "theme_labels": [
+        "財務・計算演習"
+      ]
+    },
+    {
+      "date": "2026-05-30",
+      "section": "業務内容",
+      "text": "午前〜 / 第5章（情報システム）のAI読み込み完了、音声化 / ERP・CRM・SCM・BI等の主要概念を整理",
+      "status": null,
+      "source_file": "20260530_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-30",
+      "section": "業務内容",
+      "text": "午後〜 / 第6章（経営管理）のAI読み込み / PDCA・BSC・KPI等を整理。約7割まで完了",
+      "status": null,
+      "source_file": "20260530_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-30",
+      "section": "業務内容",
+      "text": "夕方〜 / 第1〜3章の音声を再聴取（総復習） / 経営戦略・マーケ・財務の復習",
+      "status": null,
+      "source_file": "20260530_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning",
+        "finance_drill",
+        "review_plan"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習",
+        "財務・計算演習",
+        "復習・計画"
+      ]
+    },
+    {
+      "date": "2026-05-31",
+      "section": "明日の予定",
+      "text": "[中] 模擬試験の受験準備（環境・時間確保） — 6/2朝スムーズに開始できる状態",
+      "status": "中",
+      "source_file": "20260531_日報.md",
+      "themes": [
+        "bizmane"
+      ],
+      "theme_labels": [
+        "ビジマネ検定"
+      ]
+    },
+    {
+      "date": "2026-05-31",
+      "section": "明日の予定",
+      "text": "[高] BSC・KPI/KGIの追加演習 — 正答率90%以上",
+      "status": "高",
+      "source_file": "20260531_日報.md",
+      "themes": [
+        "bizmane",
+        "finance_drill"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "財務・計算演習"
+      ]
+    },
+    {
+      "date": "2026-05-31",
+      "section": "明日の予定",
+      "text": "[高] 全章の総復習（音声再聴取＋弱点章の演習） — 弱点リスト作成",
+      "status": "高",
+      "source_file": "20260531_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning",
+        "finance_drill",
+        "review_plan"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習",
+        "財務・計算演習",
+        "復習・計画"
+      ]
+    },
+    {
+      "date": "2026-05-31",
+      "section": "本日の成果・実績",
+      "text": "NotebookLM暗記ノートを最終確定した",
+      "status": null,
+      "source_file": "20260531_日報.md",
+      "themes": [
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-31",
+      "section": "本日の成果・実績",
+      "text": "全7章のインプットを完了した（1週間で達成）",
+      "status": null,
+      "source_file": "20260531_日報.md",
+      "themes": [
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-31",
+      "section": "本日の成果・実績",
+      "text": "確認問題で正答率80%、総資産回転率の弱点も解消した",
+      "status": null,
+      "source_file": "20260531_日報.md",
+      "themes": [
+        "finance_drill"
+      ],
+      "theme_labels": [
+        "財務・計算演習"
+      ]
+    },
+    {
+      "date": "2026-05-31",
+      "section": "本日の目標",
+      "text": "NotebookLM暗記ノートの最終チェック",
+      "status": "done",
+      "source_file": "20260531_日報.md",
+      "themes": [
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-31",
+      "section": "本日の目標",
+      "text": "全7章のインプット完了",
+      "status": "done",
+      "source_file": "20260531_日報.md",
+      "themes": [
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-31",
+      "section": "本日の目標",
+      "text": "第6章（経営管理）完了＋第7章（経営環境）のインプット",
+      "status": "done",
+      "source_file": "20260531_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-31",
+      "section": "業務内容",
+      "text": "午前〜 / 第6章（経営管理）のAI読み込み完了、音声化 / PDCA・BSC・KPI・原価管理を整理",
+      "status": null,
+      "source_file": "20260531_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-31",
+      "section": "業務内容",
+      "text": "午前〜 / 第7章（経営環境）のAI読み込み・音声化 / グローバル化・CSR・コンプライアンス等を整理",
+      "status": null,
+      "source_file": "20260531_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-31",
+      "section": "業務内容",
+      "text": "午後〜 / NotebookLM暗記ノート（経営法務・経営環境）の最終チェック / 条文・用語一覧を確定",
+      "status": null,
+      "source_file": "20260531_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-05-31",
+      "section": "業務内容",
+      "text": "午後〜 / 第1〜3章の確認問題（各5問、計15問） / 総合正答率 12/15（80%）",
+      "status": null,
+      "source_file": "20260531_日報.md",
+      "themes": [
+        "finance_drill"
+      ],
+      "theme_labels": [
+        "財務・計算演習"
+      ]
+    },
+    {
+      "date": "2026-05-31",
+      "section": "業務内容",
+      "text": "夕方〜 / 総資産回転率の再演習（5問） / 5/5 全問正解",
+      "status": null,
+      "source_file": "20260531_日報.md",
+      "themes": [
+        "finance_drill"
+      ],
+      "theme_labels": [
+        "財務・計算演習"
+      ]
+    },
+    {
+      "date": "2026-06-01",
+      "section": "明日の予定",
+      "text": "[中] AI学習フローの継続（音声・NotebookLM） — 暗記・復習科目を当日までにカバー",
+      "status": "中",
+      "source_file": "20260601_日報.md",
+      "themes": [
+        "ai_learning",
+        "review_plan"
+      ],
+      "theme_labels": [
+        "AI学習",
+        "復習・計画"
+      ]
+    },
+    {
+      "date": "2026-06-01",
+      "section": "明日の予定",
+      "text": "[低] 模擬試験結果に基づく対策方針の整理 — 本番までの残タスクを明確化",
+      "status": "低",
+      "source_file": "20260601_日報.md",
+      "themes": [
+        "bizmane"
+      ],
+      "theme_labels": [
+        "ビジマネ検定"
+      ]
+    },
+    {
+      "date": "2026-06-01",
+      "section": "明日の予定",
+      "text": "[高] ビジマネ検定の模擬試験を受験 — 合格ライン以上の得点を確認",
+      "status": "高",
+      "source_file": "20260601_日報.md",
+      "themes": [
+        "bizmane"
+      ],
+      "theme_labels": [
+        "ビジマネ検定"
+      ]
+    },
+    {
+      "date": "2026-06-01",
+      "section": "本日の成果・実績",
+      "text": "BSC・KPI/KGIの演習で正答率90%に改善した",
+      "status": null,
+      "source_file": "20260601_日報.md",
+      "themes": [
+        "bizmane",
+        "finance_drill"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "財務・計算演習"
+      ]
+    },
+    {
+      "date": "2026-06-01",
+      "section": "本日の成果・実績",
+      "text": "全7章の総復習を完了し、弱点リスト（15項目）を作成した",
+      "status": null,
+      "source_file": "20260601_日報.md",
+      "themes": [
+        "bizmane",
+        "review_plan"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "復習・計画"
+      ]
+    },
+    {
+      "date": "2026-06-01",
+      "section": "本日の成果・実績",
+      "text": "模擬試験（6/2）の受験準備を完了した",
+      "status": null,
+      "source_file": "20260601_日報.md",
+      "themes": [
+        "bizmane"
+      ],
+      "theme_labels": [
+        "ビジマネ検定"
+      ]
+    },
+    {
+      "date": "2026-06-01",
+      "section": "本日の目標",
+      "text": "BSC・KPI/KGIの追加演習",
+      "status": "done",
+      "source_file": "20260601_日報.md",
+      "themes": [
+        "bizmane",
+        "finance_drill"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "財務・計算演習"
+      ]
+    },
+    {
+      "date": "2026-06-01",
+      "section": "本日の目標",
+      "text": "全章の総復習（音声再聴取＋弱点章の演習）",
+      "status": "done",
+      "source_file": "20260601_日報.md",
+      "themes": [
+        "ai_learning",
+        "finance_drill",
+        "review_plan"
+      ],
+      "theme_labels": [
+        "AI学習",
+        "財務・計算演習",
+        "復習・計画"
+      ]
+    },
+    {
+      "date": "2026-06-01",
+      "section": "本日の目標",
+      "text": "模擬試験（6/2）の受験準備",
+      "status": "done",
+      "source_file": "20260601_日報.md",
+      "themes": [
+        "bizmane"
+      ],
+      "theme_labels": [
+        "ビジマネ検定"
+      ]
+    },
+    {
+      "date": "2026-06-01",
+      "section": "業務内容",
+      "text": "夕方〜 / 弱点リストの作成（計15項目） / 財務比率・BSC・経営法務条文を重点項目に",
+      "status": null,
+      "source_file": "20260601_日報.md",
+      "themes": [
+        "bizmane",
+        "finance_drill"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "財務・計算演習"
+      ]
+    },
+    {
+      "date": "2026-06-01",
+      "section": "業務内容",
+      "text": "夜〜 / 模擬試験の受験環境・時間の確認 / 6/2朝9:00開始、120分を確保",
+      "status": null,
+      "source_file": "20260601_日報.md",
+      "themes": [
+        "bizmane"
+      ],
+      "theme_labels": [
+        "ビジマネ検定"
+      ]
+    },
+    {
+      "date": "2026-06-01",
+      "section": "業務内容",
+      "text": "日中〜 / BSC・KPI/KGIの追加演習（10問） / 正答率 9/10（90%）。前日の弱点を解消",
+      "status": null,
+      "source_file": "20260601_日報.md",
+      "themes": [
+        "bizmane",
+        "finance_drill"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "財務・計算演習"
+      ]
+    },
+    {
+      "date": "2026-06-01",
+      "section": "業務内容",
+      "text": "日中〜 / 財務・会計の計算問題追加演習（10問） / 正答率 8/10（80%）",
+      "status": null,
+      "source_file": "20260601_日報.md",
+      "themes": [
+        "finance_drill"
+      ],
+      "theme_labels": [
+        "財務・計算演習"
+      ]
+    },
+    {
+      "date": "2026-06-01",
+      "section": "業務内容",
+      "text": "朝〜 / 全7章の音声を順に再聴取（総復習） / 1周約3時間。全体像の再確認完了",
+      "status": null,
+      "source_file": "20260601_日報.md",
+      "themes": [
+        "ai_learning",
+        "review_plan"
+      ],
+      "theme_labels": [
+        "AI学習",
+        "復習・計画"
+      ]
+    },
+    {
+      "date": "2026-06-02",
+      "section": "明日の予定",
+      "text": "[中] AI学習フローの継続（音声・NotebookLM） — 暗記・復習科目を当日までにカバー",
+      "status": "中",
+      "source_file": "20260602_日報.md",
+      "themes": [
+        "ai_learning",
+        "review_plan"
+      ],
+      "theme_labels": [
+        "AI学習",
+        "復習・計画"
+      ]
+    },
+    {
+      "date": "2026-06-02",
+      "section": "明日の予定",
+      "text": "[低] 本番日程・持ち物・受験手順の最終確認 — 当日をスムーズに迎えられる状態にする",
+      "status": "低",
+      "source_file": "20260602_日報.md",
+      "themes": [
+        "bizmane",
+        "review_plan"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "復習・計画"
+      ]
+    },
+    {
+      "date": "2026-06-02",
+      "section": "明日の予定",
+      "text": "[高] ビジマネ検定：模擬試験によるしらみつぶし対策 — 弱点領域を特定し、再テストで合格ライン以上の安定感を得る",
+      "status": "高",
+      "source_file": "20260602_日報.md",
+      "themes": [
+        "bizmane"
+      ],
+      "theme_labels": [
+        "ビジマネ検定"
+      ]
+    },
+    {
+      "date": "2026-06-02",
+      "section": "本日の成果・実績",
+      "text": "AI活用型の学習スタイル（読み込み・音声・NotebookLM）を本番前まで継続して運用した",
+      "status": null,
+      "source_file": "20260602_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-06-02",
+      "section": "本日の成果・実績",
+      "text": "ビジマネ検定の模擬試験を受験し、合格した",
+      "status": null,
+      "source_file": "20260602_日報.md",
+      "themes": [
+        "bizmane"
+      ],
+      "theme_labels": [
+        "ビジマネ検定"
+      ]
+    },
+    {
+      "date": "2026-06-02",
+      "section": "本日の成果・実績",
+      "text": "本番までの残課題（模擬試験でのしらみつぶし）を明確化した",
+      "status": null,
+      "source_file": "20260602_日報.md",
+      "themes": [
+        "bizmane"
+      ],
+      "theme_labels": [
+        "ビジマネ検定"
+      ]
+    },
+    {
+      "date": "2026-06-02",
+      "section": "本日の目標",
+      "text": "AI活用（テキスト読み込み・通勤中の音声学習・NotebookLMでの暗記整理）による学習サイクルを実践する",
+      "status": "done",
+      "source_file": "20260602_日報.md",
+      "themes": [
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-06-02",
+      "section": "本日の目標",
+      "text": "ビジマネ検定の模擬試験を受験し、現状の到達度を確認する",
+      "status": "done",
+      "source_file": "20260602_日報.md",
+      "themes": [
+        "bizmane"
+      ],
+      "theme_labels": [
+        "ビジマネ検定"
+      ]
+    },
+    {
+      "date": "2026-06-02",
+      "section": "本日の目標",
+      "text": "合格ライン超えまでの弱点を洗い出し、本番までの対策方針を固める（継続）",
+      "status": "open",
+      "source_file": "20260602_日報.md",
+      "themes": [
+        "bizmane"
+      ],
+      "theme_labels": [
+        "ビジマネ検定"
+      ]
+    },
+    {
+      "date": "2026-06-02",
+      "section": "業務内容",
+      "text": "〜 / 本番に向けた残タスクの整理 / 模擬試験によるしらみつぶし対策を残し、当日までに仕上げる方針を確認",
+      "status": null,
+      "source_file": "20260602_日報.md",
+      "themes": [
+        "bizmane"
+      ],
+      "theme_labels": [
+        "ビジマネ検定"
+      ]
+    },
+    {
+      "date": "2026-06-02",
+      "section": "業務内容",
+      "text": "日中〜 / AIごり押しスタイルでの学習（テキストをAIで読み込み→通勤中に音声で聴く／暗記科目はNotebookLMでまとめ） / 学習フローは継続運用。模擬試験では合格ラインにとどまった",
+      "status": null,
+      "source_file": "20260602_日報.md",
+      "themes": [
+        "bizmane",
+        "ai_learning"
+      ],
+      "theme_labels": [
+        "ビジマネ検定",
+        "AI学習"
+      ]
+    },
+    {
+      "date": "2026-06-02",
+      "section": "業務内容",
+      "text": "朝〜 / ビジマネ検定の模擬試験を実施 / 合格。本番前の到達度確認として完了",
+      "status": null,
+      "source_file": "20260602_日報.md",
+      "themes": [
+        "bizmane"
+      ],
+      "theme_labels": [
+        "ビジマネ検定"
+      ]
+    }
+  ]
+}
+  </script>
+  <script>
+    const DATA = JSON.parse(document.getElementById("analysisData").textContent);
+
+    const CHART_COLORS = [
+      "#4f8cff", "#3dd68c", "#f0b429", "#e85d75", "#a78bfa", "#38bdf8", "#94a3b8"
+    ];
+
+    function initHeader() {
+      const m = DATA.meta;
+      document.getElementById("headerMeta").textContent =
+        `対象: ${m.from || "—"} 〜 ${m.to || "—"} ｜ 日報 ${m.reportCount} 件 ｜ 抽出 ${m.itemCount} 件 ｜ 生成: ${m.generatedAt}`;
+    }
+
+    function initSummaryCards() {
+      const top = DATA.themeTotals.slice(0, 3);
+      const el = document.getElementById("summaryCards");
+      el.innerHTML = top.map((t, i) => `
+        <div class="card">
+          <div class="label">TOP ${i + 1} テーマ</div>
+          <div class="value">${t.count}</div>
+          <div class="sub">${t.label}</div>
+        </div>
+      `).join("") + `
+        <div class="card">
+          <div class="label">抽出件数</div>
+          <div class="value">${DATA.meta.itemCount}</div>
+          <div class="sub">全セクション合計</div>
+        </div>`;
+    }
+
+    function initNumericTable() {
+      const tbody = document.querySelector("#numericTable tbody");
+      tbody.innerHTML = DATA.themeTotals.map(t =>
+        `<tr><td>${t.label}</td><td>${t.count}</td></tr>`
+      ).join("");
+    }
+
+    let barChart, stackedChart;
+
+    function initCharts() {
+      const labels = DATA.themeTotals.map(t => t.label);
+      const counts = DATA.themeTotals.map(t => t.count);
+
+      barChart = new Chart(document.getElementById("barChart"), {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [{
+            label: "言及数",
+            data: counts,
+            backgroundColor: CHART_COLORS.slice(0, labels.length),
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { beginAtZero: true, ticks: { precision: 0 } },
+            x: { ticks: { maxRotation: 45, minRotation: 0 } },
+          },
+        },
+      });
+
+      const dates = DATA.byDate.map(d => d.date);
+      const themeIds = DATA.themeTotals.map(t => t.id);
+      const datasets = themeIds.map((id, i) => ({
+        label: DATA.themeMeta[id] || id,
+        data: DATA.byDate.map(d => d.themes[id] || 0),
+        backgroundColor: CHART_COLORS[i % CHART_COLORS.length],
+        stack: "stack0",
+      }));
+
+      stackedChart = new Chart(document.getElementById("stackedChart"), {
+        type: "bar",
+        data: { labels: dates, datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            x: { stacked: true },
+            y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } },
+          },
+        },
+      });
+    }
+
+    function initFilters() {
+      const themeSel = document.getElementById("themeFilter");
+      DATA.themeTotals.forEach(t => {
+        const opt = document.createElement("option");
+        opt.value = t.id;
+        opt.textContent = t.label;
+        themeSel.appendChild(opt);
+      });
+
+      const sections = [...new Set(DATA.items.map(i => i.section))].sort();
+      const secSel = document.getElementById("sectionFilter");
+      sections.forEach(s => {
+        const opt = document.createElement("option");
+        opt.value = s;
+        opt.textContent = s;
+        secSel.appendChild(opt);
+      });
+
+      [themeSel, secSel, document.getElementById("searchBox")].forEach(el => {
+        el.addEventListener("input", renderDetailTable);
+        el.addEventListener("change", renderDetailTable);
+      });
+    }
+
+    function renderDetailTable() {
+      const themeId = document.getElementById("themeFilter").value;
+      const section = document.getElementById("sectionFilter").value;
+      const q = document.getElementById("searchBox").value.trim().toLowerCase();
+
+      const filtered = DATA.items.filter(item => {
+        if (themeId && !item.themes.includes(themeId)) return false;
+        if (section && item.section !== section) return false;
+        if (q && !item.text.toLowerCase().includes(q)) return false;
+        return true;
+      });
+
+      const tbody = document.querySelector("#detailTable tbody");
+      tbody.innerHTML = filtered.map(item => `
+        <tr>
+          <td>${item.date}</td>
+          <td>${item.section}</td>
+          <td>${item.theme_labels.map(l => `<span class="tag">${l}</span>`).join("")}</td>
+          <td>${escapeHtml(item.text)}</td>
+        </tr>
+      `).join("");
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    initHeader();
+    initSummaryCards();
+    initNumericTable();
+    initCharts();
+    initFilters();
+    renderDetailTable();
+  </script>
+</body>
+</html>
